@@ -1,3 +1,5 @@
+import { readFile, rename, writeFile } from 'node:fs/promises';
+import { resolve as resolvePath } from 'node:path';
 import { cache } from '../cache.js';
 import { config } from '../config.js';
 import { ApiError } from '../errors.js';
@@ -36,6 +38,27 @@ import type { CookieMap } from './cookie-jar.js';
 
 const STORE_KEY = 'session:v1';
 const STORE_TTL_SECONDS = 60 * 60 * 24 * 365;
+
+/**
+ * Disk is the authoritative store on a long-lived host.
+ *
+ * The in-process cache is lost on every restart, and the environment
+ * deliberately holds no cookie on a deployed instance — user-data is readable
+ * from the instance metadata service, so a session baked in there would sit in
+ * plaintext for the life of the box. Without a file, a `systemctl restart` or a
+ * reboot would leave the service authenticated-less until someone re-minted by
+ * hand, which is exactly the manual step this design exists to remove.
+ *
+ * Written 0600 and owned by the service user. Set SESSION_FILE to relocate it,
+ * or to an empty string to disable file persistence entirely (useful on
+ * read-only or ephemeral filesystems, where a shared cache should be configured
+ * instead).
+ */
+function sessionFilePath(): string | null {
+  const configured = process.env.SESSION_FILE;
+  if (configured === '') return null;
+  return resolvePath(configured?.trim() || '.session.json');
+}
 
 export interface SessionSnapshot {
   cookieHeader: string;
@@ -177,8 +200,15 @@ async function load(): Promise<State> {
   if (loading) return loading;
 
   loading = (async () => {
-    // A session rotated by another instance wins over the environment: it is
-    // strictly newer than whatever was baked in at deploy time.
+    // Precedence: disk, then shared cache, then environment. A persisted
+    // session is strictly newer than whatever was baked in at deploy time,
+    // because it has been through at least one rotation.
+    const fromDisk = await readFromDisk();
+    if (fromDisk) {
+      state = fromDisk;
+      return state;
+    }
+
     const stored = await cache().get<{ cookieHeader: string; updatedAt: string }>(STORE_KEY);
 
     if (stored?.value?.cookieHeader) {
@@ -222,9 +252,49 @@ async function persist(next: State): Promise<void> {
   next.source = 'store';
   state = next;
 
-  await cache().set(
-    STORE_KEY,
-    { cookieHeader: serializeCookieHeader(next.jar), updatedAt: next.updatedAt },
-    STORE_TTL_SECONDS,
-  );
+  const record = { cookieHeader: serializeCookieHeader(next.jar), updatedAt: next.updatedAt };
+
+  // Both backends, independently: a cache outage must not cost us the session,
+  // and a read-only filesystem must not either.
+  await Promise.allSettled([
+    cache().set(STORE_KEY, record, STORE_TTL_SECONDS),
+    writeToDisk(record),
+  ]);
+}
+
+async function readFromDisk(): Promise<State | null> {
+  const path = sessionFilePath();
+  if (!path) return null;
+
+  try {
+    const raw = await readFile(path, 'utf8');
+    const record = JSON.parse(raw) as { cookieHeader?: string; updatedAt?: string };
+    if (!record.cookieHeader) return null;
+
+    const jar = parseCookieHeader(record.cookieHeader);
+    if (!isUsable(jar)) return null;
+
+    return {
+      jar,
+      source: 'store',
+      updatedAt: record.updatedAt ?? null,
+      lastRotatedAt: null,
+      rotations: 0,
+      invalidSince: null,
+    };
+  } catch {
+    // Absent or unreadable is the normal first-boot case, not an error.
+    return null;
+  }
+}
+
+async function writeToDisk(record: { cookieHeader: string; updatedAt: string }): Promise<void> {
+  const path = sessionFilePath();
+  if (!path) return;
+
+  // Write-then-rename so a crash mid-write cannot truncate a working session
+  // into an unusable one. 0600 because this file is a live credential.
+  const temporary = `${path}.tmp`;
+  await writeFile(temporary, JSON.stringify(record), { mode: 0o600 });
+  await rename(temporary, path);
 }

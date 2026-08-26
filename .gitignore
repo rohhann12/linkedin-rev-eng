@@ -13,3 +13,8 @@ secrets/
 cookies.txt
 *.har
 tests/fixtures/raw/*.private.json
+
+# Session persistence (never commit a real one)
+.session.json
+.session.json.tmp
+.playwright-session/
