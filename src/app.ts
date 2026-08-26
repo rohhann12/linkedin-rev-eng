@@ -3,9 +3,11 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { cache, profileCacheKey, profileCacheKeyVariants } from './cache.js';
 import { config } from './config.js';
+import { architectureDocument, workflowDocument } from './docs.js';
 import { ApiError, toApiError } from './errors.js';
 import { extractProfile } from './linkedin/extract.js';
 import { knownQueryIds } from './linkedin/query-ids.js';
+import { getSession, setSession, status as sessionStatus } from './linkedin/session.js';
 import { parseProfileUrl } from './linkedin/url.js';
 import { openApiDocument } from './openapi.js';
 import { PLAYGROUND_HTML } from './playground.js';
@@ -47,20 +49,29 @@ export function createApp() {
     res.json(openApiDocument());
   });
 
+  app.get('/v1/architecture', (_req, res) => {
+    res.json(architectureDocument());
+  });
+
+  app.get('/v1/workflow', (_req, res) => {
+    res.json(workflowDocument());
+  });
+
   /**
    * Liveness plus session state. Deployment platforms want a 200; an operator
    * wants to know whether the cookies still work — this answers both, and
    * returns 503 when the session is dead so a monitor can alert on it.
    */
   app.get('/v1/health', async (_req, res) => {
-    const sessionConfigured = config.isConfigured;
-    res.status(sessionConfigured ? 200 : 503).json({
-      status: sessionConfigured ? 'ok' : 'degraded',
+    // Touch the session so the status reflects the store, not just the env.
+    await getSession().catch(() => undefined);
+    const session = sessionStatus();
+    const healthy = session.configured && !session.invalid_since;
+
+    res.status(healthy ? 200 : 503).json({
+      status: healthy ? 'ok' : 'degraded',
       schema_version: SCHEMA_VERSION,
-      session: {
-        configured: sessionConfigured,
-        csrf_token_present: Boolean(config.csrfToken),
-      },
+      session,
       cache: cache().name,
       strategies: config.strategyOrder,
       query_ids: knownQueryIds(),
@@ -76,6 +87,23 @@ export function createApp() {
   app.post('/v1/profile', authenticate, rateLimit, async (req, res) => {
     const parsed = requestSchema.parse(req.body ?? {});
     res.json(await handleProfile(parsed));
+  });
+
+  /**
+   * Reseed the LinkedIn session without a redeploy.
+   *
+   * This is the endpoint `npm run mint` posts to: a browser on a trusted IP
+   * performs the interactive login, and only the resulting cookie header
+   * travels to the server. The server itself never runs a browser and never
+   * handles a password.
+   */
+  app.post('/v1/admin/session', requireAdmin, async (req, res) => {
+    const { cookie } = z.object({ cookie: z.string().min(20) }).parse(req.body ?? {});
+    res.json({ session: await setSession(cookie) });
+  });
+
+  app.get('/v1/admin/session', requireAdmin, (_req, res) => {
+    res.json({ session: sessionStatus() });
   });
 
   app.post('/v1/admin/cache/purge', requireAdmin, async (req, res) => {

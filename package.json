@@ -4,7 +4,9 @@
   "private": true,
   "description": "Hosted API that resolves a LinkedIn profile URL into structured JSON",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
@@ -12,9 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "capture": "tsx scripts/capture-fixture.ts",
-    "harvest": "tsx scripts/harvest-query-ids.ts",
-    "session:check": "tsx scripts/session-check.ts"
+    "mint": "tsx scripts/mint-session.ts"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
@@ -24,13 +24,11 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
-    "supertest": "^7.0.0",
     "@types/supertest": "^6.0.2",
+    "playwright": "^1.62.1",
+    "supertest": "^7.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
-  },
-  "optionalDependencies": {
-    "@upstash/redis": "^1.34.3"
   }
 }

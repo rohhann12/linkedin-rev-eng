@@ -1,5 +1,7 @@
 import { config } from '../config.js';
 import { ApiError } from '../errors.js';
+import { absorbSetCookies, getSession, markInvalid } from './session.js';
+import type { SessionSnapshot } from './session.js';
 
 /**
  * A thin authenticated HTTP client for LinkedIn's internal endpoints.
@@ -76,13 +78,7 @@ export interface RawResponse {
 }
 
 export async function requestRaw(path: string, options: RequestOptions = {}): Promise<RawResponse> {
-  if (!config.isConfigured) {
-    throw new ApiError(
-      'SESSION_MISSING',
-      'No LinkedIn session configured. Set LINKEDIN_LI_AT and LINKEDIN_JSESSIONID (or LINKEDIN_COOKIE).',
-    );
-  }
-
+  const session = await getSession();
   const url = path.startsWith('http') ? path : `https://www.linkedin.com${path}`;
 
   return throttle.run(async () => {
@@ -93,10 +89,15 @@ export async function requestRaw(path: string, options: RequestOptions = {}): Pr
       const response = await fetch(url, {
         redirect: 'follow',
         signal: controller.signal,
-        headers: buildHeaders(options),
+        headers: buildHeaders(options, session),
       });
 
       const body = await response.text();
+
+      // Keep the jar current. Fire-and-forget: rotation is a background concern
+      // and a failed cache write must never fail the request that triggered it.
+      void absorbSetCookies(response.headers.getSetCookie()).catch(() => undefined);
+
       const raw: RawResponse = {
         status: response.status,
         url: response.url,
@@ -133,12 +134,12 @@ export async function requestJson<T = unknown>(
   }
 }
 
-function buildHeaders(options: RequestOptions): Record<string, string> {
+function buildHeaders(options: RequestOptions, session: SessionSnapshot): Record<string, string> {
   return {
     accept: options.accept ?? ACCEPT_NORMALIZED,
     'accept-language': 'en-US,en;q=0.9',
-    cookie: config.linkedInCookie,
-    'csrf-token': config.csrfToken,
+    cookie: session.cookieHeader,
+    'csrf-token': session.csrf,
     referer: options.referer ?? 'https://www.linkedin.com/feed/',
     'sec-ch-ua': '"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
     'sec-ch-ua-mobile': '?0',
@@ -172,9 +173,11 @@ function assertUsable(raw: RawResponse): void {
   }
 
   if (status === 401 || /CSRF check failed/i.test(body)) {
+    // Flag it so /v1/health reports a dead session before callers notice.
+    markInvalid();
     throw new ApiError(
       'SESSION_EXPIRED',
-      'LinkedIn rejected the session. Re-seed li_at and JSESSIONID.',
+      'LinkedIn rejected the session. Re-seed via POST /v1/admin/session.',
     );
   }
 
