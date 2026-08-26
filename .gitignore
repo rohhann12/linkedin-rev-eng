@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+.vercel/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# Captured session material must never be committed
+secrets/
+cookies.txt
+*.har
+tests/fixtures/raw/*.private.json
