@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "mint": "tsx scripts/mint-session.ts"
+    "mint": "tsx scripts/mint-session.ts",
+    "push-session": "tsx scripts/push-session.ts"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
