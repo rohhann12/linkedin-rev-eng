@@ -101,6 +101,11 @@ describe('normalizeDash', () => {
     expect(position?.company.public_identifier).toBe('analytical-engines');
   });
 
+  it('derives a duration string, since the dash payload does not carry one', () => {
+    // Open-ended range measured to today, the way LinkedIn's own UI renders it.
+    expect(patch.experience?.[0]?.duration).toMatch(/^\d+ (yr|mo)/);
+  });
+
   it('treats a missing end date as the current role', () => {
     expect(patch.experience?.[0]?.start).toEqual({ year: 1842, month: 6, day: null });
     expect(patch.experience?.[0]?.is_current).toBe(true);

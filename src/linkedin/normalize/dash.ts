@@ -16,6 +16,7 @@ import {
   compact,
   date,
   dedupe,
+  duration,
   images,
   isObj,
   num,
@@ -204,7 +205,8 @@ function readExperience(index: EntityIndex): Experience[] {
       description: str(entity, 'description'),
       start: period.start,
       end: period.end,
-      duration: str(entity, 'duration', 'durationText'),
+      // Not present in the dash payload — derived from the range instead.
+      duration: str(entity, 'duration', 'durationText') ?? duration(period.start, period.end),
       is_current: period.isCurrent,
       skills: skillNamesOf(entity),
     });

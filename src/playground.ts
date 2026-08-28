@@ -316,14 +316,15 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
    * keyboard support, find-in-page auto-expansion and the open/closed state
    * all come from the browser, with nothing to keep in sync.
    *
-   * Sections with content open by default; anything the caller opted into but
-   * that came back empty stays closed rather than being hidden, so an empty
-   * section is visibly empty instead of silently absent.
+   * Collapsed by default. A full profile is a dozen sections deep; opening
+   * them all buries the identity header and turns the page into a scroll. The
+   * closed list doubles as a contents page — you can see at a glance which
+   * sections came back and how many entries each holds.
    */
   function box(title, count, inner, open) {
     if (!inner) return '';
     var badge = count != null ? '<span class="count">' + count + '</span>' : '';
-    return '<details class="box"' + (open === false ? '' : ' open') + '>' +
+    return '<details class="box"' + (open === true ? ' open' : '') + '>' +
       '<summary><span class="caret"></span>' +
       '<span class="sec-title">' + esc(title) + '</span>' + badge + '</summary>' +
       '<div class="sec-body">' + inner + '</div>' +

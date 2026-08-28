@@ -116,6 +116,37 @@ export function range(source: unknown): Range {
   return { start, end, isCurrent: Boolean(start) && !end };
 }
 
+/**
+ * Render a span the way LinkedIn's own UI does — "2 yrs 3 mos".
+ *
+ * The dash payload carries `dateRange` but not the rendered duration string,
+ * so this is computed rather than read. An open-ended range is measured to
+ * today, matching what a viewer sees on the page.
+ *
+ * Returns null without a start month: a year alone cannot give a month count,
+ * and inventing one would put a fabricated precision into the output.
+ */
+export function duration(start: ProfileDate, end: ProfileDate, now = new Date()): string | null {
+  if (!start?.year || !start.month) return null;
+
+  const endYear = end?.year ?? now.getUTCFullYear();
+  const endMonth = end?.year ? (end.month ?? start.month) : now.getUTCMonth() + 1;
+
+  let months = (endYear - start.year) * 12 + (endMonth - start.month);
+  // LinkedIn counts inclusively: Jan–Jan reads as "1 mo", not "0 mos".
+  months += 1;
+  if (months <= 0) return null;
+
+  const years = Math.floor(months / 12);
+  const remainder = months % 12;
+  const parts: string[] = [];
+
+  if (years > 0) parts.push(`${years} yr${years === 1 ? '' : 's'}`);
+  if (remainder > 0) parts.push(`${remainder} mo${remainder === 1 ? '' : 's'}`);
+
+  return parts.join(' ') || null;
+}
+
 const VECTOR_KEYS = [
   'vectorImage',
   'com.linkedin.common.VectorImage',

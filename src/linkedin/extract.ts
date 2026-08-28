@@ -94,7 +94,7 @@ export async function extractProfile(
 
     const startedAt = Date.now();
     try {
-      const patch = await runStrategy(name, target, options, warnings);
+      const patch = await runStrategy(name, target, options, warnings, profile.urn);
 
       if (!patch || Object.keys(patch).length === 0) {
         strategies.push({ name, status: 'empty', duration_ms: Date.now() - startedAt, error: null });
@@ -150,7 +150,8 @@ export async function extractProfile(
   if (missing.length > 0) {
     warnings.push(
       `Empty sections: ${missing.join(', ')}. LinkedIn does not distinguish "member has none" ` +
-        'from "not visible to this session"; re-run with deep=true if unexpected.',
+        'from "not visible to this session", so an empty section is not necessarily a failure.' +
+        (options.deep ? '' : ' Re-run with deep=true to fetch full section lists.'),
     );
   }
   if (lastFatal) warnings.push(`Chain stopped early: ${lastFatal.code}.`);
@@ -170,12 +171,16 @@ async function runStrategy(
   target: ParsedProfileUrl,
   options: ExtractOptions,
   warnings: string[],
+  knownUrn: string | null,
 ): Promise<Partial<Profile> | null> {
   switch (name) {
     case 'embedded':
       return runEmbedded(target, options, warnings);
     case 'graphql':
-      return runGraphql(target);
+      // An earlier tier has usually already resolved the URN. Re-deriving it
+      // costs a request and, when the lookup query id is stale, fails outright
+      // — taking the tier down with it for no reason.
+      return runGraphql(target, knownUrn);
     case 'rest':
       return runRest(target, options);
     default:
@@ -228,8 +233,11 @@ async function runEmbedded(
   return patch;
 }
 
-async function runGraphql(target: ParsedProfileUrl): Promise<Partial<Profile>> {
-  const result = await fetchGraphql(target.publicIdentifier, null);
+async function runGraphql(
+  target: ParsedProfileUrl,
+  knownUrn: string | null,
+): Promise<Partial<Profile>> {
+  const result = await fetchGraphql(target.publicIdentifier, knownUrn);
   return normalizeDash(result.envelopes, target.publicIdentifier);
 }
 
@@ -264,13 +272,21 @@ async function runRest(
 }
 
 /**
- * "Complete enough to stop". Deliberately conservative: identity plus the two
- * sections callers actually build on. Anything less and the next strategy is
- * worth its request.
+ * "Complete enough to stop."
+ *
+ * The bar is identity plus *some* career history — deliberately not "every
+ * section populated", because most sections are legitimately empty on most
+ * profiles. Requiring education here meant that anyone who simply has not
+ * listed a school looked permanently incomplete, so the chain ran every
+ * remaining tier on every such profile. Measured against a live profile that
+ * cost 2,364ms on top of a 544ms answer: 81% of the response time spent on a
+ * tier that had nothing to add.
+ *
+ * Opt-in sections still gate, because the caller asked for them specifically.
  */
 function isComplete(profile: Profile, options: ExtractOptions): boolean {
   const hasIdentity = Boolean(profile.name.full && profile.headline);
-  const hasHistory = profile.experience.length > 0 && profile.education.length > 0;
+  const hasHistory = profile.experience.length > 0 || profile.education.length > 0;
   const hasContact = !options.includeContact || profile.contact_info !== null;
   const hasActivity = !options.includeActivity || profile.activity.length > 0;
   return hasIdentity && hasHistory && hasContact && hasActivity;
