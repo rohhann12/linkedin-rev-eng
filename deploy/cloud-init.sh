@@ -41,6 +41,9 @@ API_KEYS=${API_KEYS:-}
 # Survives restarts and reboots. systemd's ProtectSystem=strict makes
 # /opt/linkedin-api the only writable path, so the session lives there.
 SESSION_FILE=/opt/linkedin-api/.session.json
+# Keeps the session warm while nobody is using the API. /voyager/api/me is not
+# a profile view, so this costs nothing against the commercial use limit.
+KEEPALIVE_INTERVAL_MINUTES=240
 CACHE_TTL_SECONDS=86400
 RATE_LIMIT_PER_MINUTE=20
 UPSTREAM_MIN_INTERVAL_MS=1500
