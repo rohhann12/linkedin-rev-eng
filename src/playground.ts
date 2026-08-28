@@ -10,6 +10,8 @@
  * on purpose: the whole document is itself a template literal, and a stray
  * backtick would terminate it.
  */
+import { DESIGN_TOKENS, navBar } from './ui-tokens.js';
+
 export const PLAYGROUND_HTML = String.raw`<!doctype html>
 <html lang="en">
 <head>
@@ -17,50 +19,7 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>LinkedIn Profile API</title>
 <style>
-  :root {
-    --paper:      #faf8f5;
-    --card:       #ffffff;
-    --ink:        #1c1a17;
-    --ink-soft:   #57534e;
-    --ink-faint:  #8b8580;
-    --rule:       #e7e2da;
-    --rule-soft:  #f0ece5;
-    --accent:     #1a5c99;
-    --accent-bg:  #eef4fa;
-    --good:       #2f6f4f;
-    --warn:       #9a5b12;
-    --bad:        #a8402c;
-    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --paper:      #16151a;
-      --card:       #1d1c22;
-      --ink:        #ece9e4;
-      --ink-soft:   #a8a29a;
-      --ink-faint:  #75706a;
-      --rule:       #2f2d35;
-      --rule-soft:  #26242b;
-      --accent:     #6fa8dc;
-      --accent-bg:  #1c2733;
-      --good:       #63b58a;
-      --warn:       #d9a441;
-      --bad:        #d9705c;
-    }
-  }
-
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body {
-    margin: 0;
-    background: var(--paper);
-    color: var(--ink);
-    font: 16px/1.6 var(--sans);
-    -webkit-font-smoothing: antialiased;
-  }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 56px 24px 96px; }
+` + DESIGN_TOKENS + String.raw`
 
   /* ---------- masthead ---------- */
   header { border-bottom: 1px solid var(--rule); padding-bottom: 28px; margin-bottom: 32px; }
@@ -244,6 +203,7 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
 </head>
 <body>
 <div class="wrap">
+  ` + navBar('playground') + String.raw`
   <header>
     <h1>LinkedIn Profile <em>API</em></h1>
     <p class="lede">A profile URL in, structured JSON out. Extraction runs as a chain of

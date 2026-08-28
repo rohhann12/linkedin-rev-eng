@@ -10,6 +10,7 @@ import { knownQueryIds } from './linkedin/query-ids.js';
 import { getSession, setSession, status as sessionStatus } from './linkedin/session.js';
 import { parseProfileUrl } from './linkedin/url.js';
 import { openApiDocument } from './openapi.js';
+import { architecturePage, workflowPage } from './pages.js';
 import { PLAYGROUND_HTML } from './playground.js';
 import { checkRateLimit } from './rate-limit.js';
 import { SCHEMA_VERSION } from './schema.js';
@@ -47,6 +48,15 @@ export function createApp() {
 
   app.get('/openapi.json', (_req, res) => {
     res.json(openApiDocument());
+  });
+
+  // Human-readable at the bare path, machine-readable under /v1.
+  app.get('/architecture', (_req, res) => {
+    res.type('html').send(architecturePage());
+  });
+
+  app.get('/workflow', (_req, res) => {
+    res.type('html').send(workflowPage());
   });
 
   app.get('/v1/architecture', (_req, res) => {
