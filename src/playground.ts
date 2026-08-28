@@ -105,16 +105,6 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
   button.go:disabled { opacity: .45; cursor: progress; }
   .timing { font: 12.5px var(--mono); color: var(--ink-faint); }
 
-  /* ---------- run summary ---------- */
-  .summary { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 22px; }
-  .chip {
-    font: 11.5px var(--mono); padding: 5px 11px; border-radius: 100px;
-    border: 1px solid var(--rule); color: var(--ink-soft); background: var(--card);
-  }
-  .chip.good { color: var(--good); border-color: currentColor; }
-  .chip.warn { color: var(--warn); border-color: currentColor; }
-  .chip.bad  { color: var(--bad);  border-color: currentColor; }
-
   /* ---------- tabs ---------- */
   .tabs { display: flex; gap: 26px; border-bottom: 1px solid var(--rule); margin-bottom: 26px; }
   .tab {
@@ -147,17 +137,46 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
   /* ---------- sections ---------- */
   section.box {
     background: var(--card); border: 1px solid var(--rule);
-    border-radius: 12px; padding: 24px 26px; margin-bottom: 18px;
+    border-radius: 12px; margin-bottom: 18px; overflow: hidden;
   }
   section.box > h3 {
     font: 600 11.5px var(--sans); letter-spacing: .1em; text-transform: uppercase;
     color: var(--ink-faint); margin: 0 0 18px;
     display: flex; align-items: baseline; gap: 9px;
   }
-  section.box > h3 .count {
-    font: 11px var(--mono); color: var(--ink-faint);
-    border: 1px solid var(--rule); border-radius: 100px; padding: 1px 7px;
+
+  /* Collapsible sections. <details>/<summary> gives keyboard support and
+     find-in-page expansion for free — no JS state to keep in sync. */
+  details.box > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    padding: 20px 26px; display: flex; align-items: center; gap: 12px;
   }
+  details.box > summary::-webkit-details-marker { display: none; }
+  details.box > summary:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+  details.box > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .sec-title {
+    font: 600 20px/1.2 var(--serif); letter-spacing: -0.01em; color: var(--ink);
+    flex: 1; min-width: 0;
+  }
+  .count {
+    font: 12px var(--mono); color: var(--ink-faint);
+    border: 1px solid var(--rule); border-radius: 100px; padding: 2px 9px; flex: 0 0 auto;
+  }
+  .caret {
+    flex: 0 0 auto; width: 9px; height: 9px; border-right: 2px solid var(--ink-faint);
+    border-bottom: 2px solid var(--ink-faint); transform: rotate(45deg);
+    transition: transform .16s ease; margin-right: 2px;
+  }
+  details.box[open] > summary .caret { transform: rotate(-135deg); }
+  details.box[open] > summary { border-bottom: 1px solid var(--rule-soft); }
+  .sec-body { padding: 20px 26px 24px; }
+  .toolbar { display: flex; gap: 16px; margin-bottom: 18px; }
+  .toolbar button {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    font: 600 12px var(--sans); letter-spacing: .04em; text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .toolbar button:hover { color: var(--accent); }
   .prose { font: 16px/1.7 var(--serif); color: var(--ink); white-space: pre-wrap; margin: 0; }
 
   .entry { display: flex; gap: 16px; padding: 16px 0; border-top: 1px solid var(--rule-soft); }
@@ -244,10 +263,6 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
       <label class="opt"><input type="checkbox" id="activity" /> Activity</label>
       <label class="opt"><input type="checkbox" id="refresh" /> Bypass cache</label>
     </div>
-    <label class="field" style="margin-top:16px">
-      <span class="label">API key <span style="text-transform:none;letter-spacing:0">— only if this deployment sets API_KEYS</span></span>
-      <input id="key" type="password" placeholder="x-api-key" />
-    </label>
     <div class="actions">
       <button class="go" id="go">Resolve</button>
       <span class="timing" id="timing"></span>
@@ -255,7 +270,6 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
   </div>
 
   <div id="result" hidden>
-    <div class="summary" id="summary"></div>
     <div class="tabs" role="tablist">
       <button class="tab" id="tab-profile" role="tab" aria-selected="true">Profile</button>
       <button class="tab" id="tab-json" role="tab" aria-selected="false">JSON</button>
@@ -297,10 +311,23 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
     return list && list.length ? list[0].url : null;
   }
 
-  function box(title, count, inner) {
+  /*
+   * A collapsible section. Uses <details>/<summary> rather than a JS toggle:
+   * keyboard support, find-in-page auto-expansion and the open/closed state
+   * all come from the browser, with nothing to keep in sync.
+   *
+   * Sections with content open by default; anything the caller opted into but
+   * that came back empty stays closed rather than being hidden, so an empty
+   * section is visibly empty instead of silently absent.
+   */
+  function box(title, count, inner, open) {
     if (!inner) return '';
     var badge = count != null ? '<span class="count">' + count + '</span>' : '';
-    return '<section class="box"><h3>' + esc(title) + badge + '</h3>' + inner + '</section>';
+    return '<details class="box"' + (open === false ? '' : ' open') + '>' +
+      '<summary><span class="caret"></span>' +
+      '<span class="sec-title">' + esc(title) + '</span>' + badge + '</summary>' +
+      '<div class="sec-body">' + inner + '</div>' +
+    '</details>';
   }
 
   /* ---------- section renderers ---------- */
@@ -507,9 +534,13 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
     html += box('Featured', (p.featured || []).length || null, renderFeatured(p.featured));
     html += box('Activity', (p.activity || []).length || null, renderActivity(p.activity));
     html += box('Contact info', null, renderContact(p.contact_info));
-    html += box('Provenance', null, renderProvenance(body.meta));
+    // Provenance is diagnostics, not profile data — collapsed unless asked for.
+    html += box('Extraction detail', null, renderProvenance(body.meta), false);
 
-    return html;
+    return '<div class="toolbar">' +
+      '<button type="button" data-all="open">Expand all</button>' +
+      '<button type="button" data-all="close">Collapse all</button>' +
+    '</div>' + html;
   }
 
   function renderError(body, statusCode) {
@@ -521,26 +552,6 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
       (e.retryable ? '<p class="note"><em>Retryable.</em></p>' : '') +
       (e.details ? '<pre style="margin-top:12px">' + esc(JSON.stringify(e.details, null, 2)) + '</pre>' : '') +
     '</section>';
-  }
-
-  function renderSummary(body, statusCode) {
-    var chips = [];
-    chips.push(chip('HTTP ' + statusCode, statusCode === 200 ? 'good' : 'bad'));
-
-    if (body && body.meta) {
-      (body.meta.strategies || []).forEach(function (s) {
-        var tone = s.status === 'ok' ? 'good' : s.status === 'error' ? 'bad' : '';
-        chips.push(chip(s.name + ' · ' + s.status + ' · ' + s.duration_ms + 'ms', tone));
-      });
-      chips.push(chip('cache ' + body.meta.cache));
-      if (body.meta.partial) chips.push(chip('partial', 'warn'));
-    }
-    if (body && body.error) chips.push(chip(body.error.code, 'bad'));
-    return chips.join('');
-  }
-
-  function chip(text, tone) {
-    return '<span class="' + (tone ? 'chip ' + tone : 'chip') + '">' + esc(text) + '</span>';
   }
 
   /* ---------- interaction ---------- */
@@ -567,19 +578,14 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
     if ($('activity').checked) includes.push('activity');
     if (includes.length) params.set('include', includes.join(','));
 
-    var headers = {};
-    var key = $('key').value.trim();
-    if (key) headers['x-api-key'] = key;
-
     var startedAt = performance.now();
     try {
-      var response = await fetch('/v1/profile?' + params.toString(), { headers: headers });
+      var response = await fetch('/v1/profile?' + params.toString());
       var body = await response.json();
       var elapsed = Math.round(performance.now() - startedAt);
 
       $('result').hidden = false;
       $('timing').textContent = elapsed + ' ms';
-      $('summary').innerHTML = renderSummary(body, response.status);
       $('json').textContent = JSON.stringify(body, null, 2);
       $('view-profile').innerHTML = response.ok && body.profile
         ? renderProfile(body)
@@ -587,7 +593,6 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
       selectTab('profile');
     } catch (err) {
       $('result').hidden = false;
-      $('summary').innerHTML = chip('network error', 'bad');
       $('view-profile').innerHTML = '<section class="box"><h3>Request failed</h3>' +
         '<p class="note">' + esc(String(err)) + '</p></section>';
       $('json').textContent = String(err);
@@ -596,6 +601,15 @@ export const PLAYGROUND_HTML = String.raw`<!doctype html>
       button.disabled = false;
     }
   }
+
+  // Delegated so it survives the innerHTML rewrite on every run.
+  $('view-profile').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-all]');
+    if (!button) return;
+    var open = button.getAttribute('data-all') === 'open';
+    var sections = $('view-profile').querySelectorAll('details.box');
+    for (var i = 0; i < sections.length; i++) sections[i].open = open;
+  });
 
   $('go').addEventListener('click', run);
   $('url').addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
